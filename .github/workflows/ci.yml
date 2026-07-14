@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Smoke test (help and version)
+        run: |
+          node dist/cli.js --help
+          node dist/cli.js --version
+      - name: Missing MIP_ROOT produces a helpful error
+        run: |
+          set +e
+          output=$(node dist/cli.js list 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          test $status -eq 1
+          echo "$output" | grep -q "MIP_ROOT"
+      - uses: oven-sh/setup-bun@v2
+      - name: Compiled binary smoke test
+        run: |
+          bun build --compile --define __MIP_CLI_VERSION__='"ci"' src/cli.ts --outfile /tmp/mip
+          /tmp/mip --version
+          /tmp/mip --help

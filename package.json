@@ -1,0 +1,33 @@
+{
+  "name": "mip-cli",
+  "version": "0.1.0",
+  "description": "Command-line interface for mip, the MATLAB package manager. Runs mip without MATLAB, powered by numbl.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mip-org/mip-cli.git"
+  },
+  "bin": {
+    "mip": "dist/cli.js"
+  },
+  "files": [
+    "dist/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/cli.js && chmod +x dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "numbl": "^0.4.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}
