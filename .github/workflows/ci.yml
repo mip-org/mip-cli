@@ -21,7 +21,7 @@ jobs:
         run: |
           node dist/cli.js --help
           node dist/cli.js --version
-      - name: Missing MIP_ROOT produces a helpful error
+      - name: Unconfigured mip installation produces a helpful error
         run: |
           set +e
           output=$(node dist/cli.js list 2>&1)
@@ -29,7 +29,9 @@ jobs:
           set -e
           echo "$output"
           test $status -eq 1
-          echo "$output" | grep -q "MIP_ROOT"
+          echo "$output" | grep -q "MIP_HOME"
+      - name: Wizard syntax check
+        run: bash -n install.sh
       - uses: oven-sh/setup-bun@v2
       - name: Compiled binary smoke test
         run: |

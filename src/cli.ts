@@ -14,6 +14,7 @@ import { join } from "path";
 import { createRequire } from "module";
 import { runMipCommand } from "./run-mip.js";
 import { runMatlabBatch } from "./matlab-batch.js";
+import { bootstrapMip } from "./bootstrap.js";
 import { MipCliError, resolveMipSourceDir } from "./mip-root.js";
 
 /** Version string injected at build time (bun build --define); falls back
@@ -39,12 +40,28 @@ const MATLAB_COMMANDS = new Set(["test", "compile"]);
 
 const SESSION_COMMANDS = new Set(["load", "unload", "reset"]);
 
+// Deliberately not supported from the CLI: a process cannot change its
+// parent shell's environment, so 'activate' cannot do from here what it
+// does inside MATLAB (point the session at an environment). The shell
+// spelling of activation is setting MIP_ROOT yourself.
+const ACTIVATE_COMMANDS = new Set(["activate", "deactivate"]);
+
+function activateMessage(command: string): string {
+  return (
+    `'mip ${command}' is not available from the command line: a program cannot change its shell's environment variables.\n` +
+    `To enter an environment in your shell, set MIP_ROOT yourself:\n` +
+    `  export MIP_ROOT=/path/to/env\n` +
+    `Subsequent mip commands operate on that root. 'unset MIP_ROOT' leaves it.\n`
+  );
+}
+
 const HELP_TEXT = `mip — a package manager for MATLAB/MEX (command-line interface)
 
 Usage:
   mip install <package> [...]                     - Install one or more packages
   mip install --channel <owner>/<channel> <pkg>   - Install from a user-hosted channel
   mip install <owner>/<channel>/<package>         - Install using fully qualified name
+  mip install mip                                 - Install mip itself (uses MATLAB)
   mip update <package> [...]                      - Update one or more packages
   mip update --force <package>                    - Force update even if up to date
   mip update --deps <package>                     - Update package and its dependencies
@@ -70,13 +87,26 @@ Usage:
   mip channel list                                - List channels in priority order
   mip help [command]                              - Show help text for command
 
-The MIP_ROOT environment variable must point to your mip root directory
-(the one containing packages/), e.g. $HOME/Documents/MATLAB/mip.
-
 Commands run against the mip installed for MATLAB, interpreted with numbl —
-no MATLAB required, except for 'test' and 'compile', which run via
-'matlab -batch'. 'load', 'unload', and 'reset' manage the MATLAB session
-path and are only available inside MATLAB.
+no MATLAB required, except for 'install mip', 'test', and 'compile', which
+launch MATLAB via 'matlab -batch'. 'load', 'unload', and 'reset' manage the
+MATLAB session path and are only available inside MATLAB.
+
+Locating mip (MIP_HOME):
+  The mip installation is located via the MIP_HOME environment variable,
+  falling back to the config file written by the install wizard. MIP_HOME
+  may point at the mip root directory (the one containing packages/),
+  e.g. $HOME/Documents/MATLAB/mip.
+
+Choosing a root (MIP_ROOT):
+  Commands operate on the installation's own root by default. Set MIP_ROOT
+  to target a different root — this is the shell equivalent of activating
+  an environment inside MATLAB, and the only state the CLI honors:
+    export MIP_ROOT=/path/to/env
+
+Choosing a MATLAB (MIP_MATLAB):
+  Commands that launch MATLAB use the MIP_MATLAB environment variable,
+  falling back to the wizard-configured MATLAB, then 'matlab' on the PATH.
 `;
 
 function cliVersion(): string {
@@ -94,6 +124,10 @@ function cliVersion(): string {
  * `mip help <command>` shows in MATLAB.
  */
 function printCommandHelp(command: string): number {
+  if (ACTIVATE_COMMANDS.has(command)) {
+    process.stderr.write(activateMessage(command));
+    return 1;
+  }
   if (SESSION_COMMANDS.has(command)) {
     process.stderr.write(
       `'mip ${command}' manages the MATLAB session path and is not available from the command line. Run it inside MATLAB.\n`
@@ -154,6 +188,11 @@ function main(): number {
     return printCommandHelp(args[0].toLowerCase());
   }
 
+  if (ACTIVATE_COMMANDS.has(command)) {
+    process.stderr.write(activateMessage(command));
+    return 1;
+  }
+
   if (SESSION_COMMANDS.has(command)) {
     process.stderr.write(
       `'mip ${command}' manages the MATLAB session path and is not available from the command line. Run it inside MATLAB.\n`
@@ -163,6 +202,23 @@ function main(): number {
 
   if (MATLAB_COMMANDS.has(command)) {
     return runMatlabBatch(command, args);
+  }
+
+  // 'mip install mip' with no mip installation to interpret: bootstrap
+  // mip itself via MATLAB. With an installation present it falls through
+  // and is handled by mip like any other install.
+  if (
+    command === "install" &&
+    args.length === 1 &&
+    args[0].toLowerCase() === "mip"
+  ) {
+    let installed = true;
+    try {
+      resolveMipSourceDir();
+    } catch {
+      installed = false;
+    }
+    if (!installed) return bootstrapMip();
   }
 
   if (!NUMBL_COMMANDS.has(command)) {

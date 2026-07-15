@@ -8,7 +8,7 @@ import { readSync } from "fs";
 import { executeCode, RuntimeError } from "numbl";
 import type { WorkspaceFile } from "numbl";
 import { NodeFileIOAdapter, NodeSystemAdapter, scanMFiles } from "numbl/node";
-import { resolveMipSourceDir } from "./mip-root.js";
+import { resolveEffectiveRoot, resolveMipSourceDir } from "./mip-root.js";
 
 /** Quote a string as a MATLAB single-quoted char literal. */
 function matlabQuote(s: string): string {
@@ -38,6 +38,11 @@ function readLineSync(prompt: string): string {
 
 export function runMipCommand(command: string, args: string[]): number {
   const mipSourceDir = resolveMipSourceDir();
+
+  // Pin the root for the interpreted mip: it reads MIP_ROOT via getenv,
+  // and the CLI has already resolved which root this command targets
+  // (MIP_ROOT if set, else the installation's own root).
+  process.env.MIP_ROOT = resolveEffectiveRoot(mipSourceDir);
 
   const searchPaths: string[] = [mipSourceDir];
   const workspaceFiles: WorkspaceFile[] = scanMFiles(mipSourceDir);
